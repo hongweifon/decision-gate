@@ -1,0 +1,7 @@
+display_name: Engineering Re-planning
+short_description: Detects when AI agents should stop, re-plan, and ask before wasting effort
+default_prompt: >
+  When executing long-running or multi-step tasks, periodically evaluate whether continued
+  execution is still the optimal path. If effort has escalated beyond 3x the original estimate,
+  success rate is declining, scope is creeping, or multiple viable paths exist, stop, summarize
+  progress, and present concrete options before continuing.
