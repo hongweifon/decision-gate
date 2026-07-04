@@ -1,180 +1,324 @@
 ---
-name: engineering-replanning
-description: 当任务执行过程中，实际情况与最初预估明显偏离时，不要继续机械执行，而是主动评估是否需要暂停、重新规划（Re-plan）或向用户确认优先级。这是工程判断，不依赖任何具体工具，适用于所有长任务。
+name: decision-gate
+description: >
+  Universal decision-gating system for AI agents during long-running and multi-step tasks.
+  Continuously evaluates execution health, requirement health, and decision health. At each
+  checkpoint, the Decision Gate routes execution to one of three output categories: Execution
+  Actions (Continue, Retry, Fallback, Parallelize), Coordination (Ask User, Checkpoint,
+  Escalate), or Termination (Re-plan, Abort). Uses a Trigger Decision = f(Threshold, Confidence,
+  Policy) model where Decision Policy overrides the entire Trigger Engine. Tool-agnostic and
+  domain-agnostic. Use during any multi-step execution: web scraping, batch data processing,
+  programming, debugging, CI/CD repair, file operations, or automation workflows. Do NOT use
+  for trivial single-step tasks or when the user has explicitly pre-authorized full unattended
+  execution.
 ---
 
-# 原则
+# Decision Gate
 
-不要因为"还能继续做"就一直做。
+## Core Principle
 
-如果继续执行已经不能保证效率、时长或成功率，应先重新评估，再决定下一步。
+The Decision Gate is a runtime routing system powered by a three-layer architecture.
 
-重点不是"任务是否还能完成"，而是：
+During execution, the agent continuously evaluates health across three dimensions.
+When a signal passes its threshold and confidence bar, the Trigger Engine proposes
+a route — but Decision Policy has the final say. Policy can override, suppress, or
+mandate routing regardless of health signals.
 
-* 是否仍符合用户的目标
-* 是否仍值得继续投入
-* 是否存在更优推进方式
-
----
-
-# 需要触发 Re-plan 的典型信号
-
-## 1. 工作量明显超出最初估计
-
-例如：
-
-* 原以为几十分钟完成，实际可能需要数小时
-* 原以为几十个简单对象，实际每个对象都需要独立分析
-* 新发现大量隐藏步骤
-
-当实际复杂度明显高于预估，应暂停评估。
-
----
-
-## 2. 成功率持续下降
-
-例如：
-
-* 连续 Timeout
-* 连续 404
-* 网站无法访问
-* 权限不足
-* 接口异常
-* 大量重试仍失败
-
-不要无限 Retry。
-
-连续失败说明问题具有系统性，而不是偶然。
+Re-plan is one possible output. It belongs to the Termination category.
+It is not the goal.
 
 ---
 
-## 3. 剩余工作不可预测
+## Architecture
 
-例如：
+```
+                User Policy
+                     |
+                     v
+            Decision Policy Layer
+                     |
+         +-----------+-----------+
+         |                       |
+         v                       v
+  Mandatory Rules          Runtime Assessment
+  (always enforced)              |
+                                 v
+                         Health Assessment
+                                 |
+                                 v
+                          Trigger Engine
+                                 |
+                                 v
+                          Route Decision
+```
 
-无法估计：
+### Gate Outputs: Three Categories
 
-* 还需要多久
-* 还会遇到多少异常
-* 是否还有更多人工处理
+The nine gate outputs are organized into three functional categories.
 
-未知工作已经超过已知工作时，应重新确认计划。
+#### Category 1: Execution Actions
 
----
+The agent can decide these autonomously. No user interaction needed.
 
-## 4. 大量人工判断开始出现
+| Output | When |
+|---|---|
+| Continue | All health dimensions nominal, no policy flags |
+| Retry | Transient failure, high recovery confidence, within retry budget |
+| Fallback | Primary approach blocked, viable degraded path available |
+| Parallelize | Independent sub-tasks identified, concurrency safe |
 
-例如：
+#### Category 2: Coordination
 
-需要不断判断：
+Requires human-agent collaboration. Agent proposes; human approves or redirects.
 
-* 哪个页面才是正确入口
-* 哪份 PDF 才是正式数据
-* 哪个字段才符合需求
+| Output | When |
+|---|---|
+| Ask User | Multiple viable paths, user preference matters, or ambiguous tradeoff |
+| Checkpoint | Progress should be saved before a risky or irreversible phase |
+| Escalate | Problem exceeds agent capability, requires human domain judgment |
 
-说明任务已经从机械执行变成知识型判断，应重新评估成本。
+#### Category 3: Termination
 
----
+Stop the current execution track. Either adjust and restart, or end.
 
-## 5. 需求边界开始扩大
-
-例如：
-
-用户最初要求：收集数据
-
-执行过程中变成：
-
-* 官网验证
-* 多年份
-* 来源整理
-* PDF 查找
-* 历史页面搜索
-* 数据交叉验证
-
-需求范围已经变化，应确认是否继续扩大范围。
-
----
-
-## 6. 边际收益明显下降
-
-例如：
-
-前 10 个对象：5 分钟完成。
-
-后 10 个对象：每个需要 20 分钟。
-
-继续投入的收益越来越低，应重新确认优先级。
-
----
-
-## 7. 已经出现多个可行方案
-
-例如：
-
-方案 A：全部完成，耗时约 4 小时。
-方案 B：先完成重点部分，30 分钟交付。
-方案 C：先完成已有公开数据，再补充剩余内容。
-
-此时不要替用户决定，而应提供方案供用户选择。
+| Output | When |
+|---|---|
+| Re-plan | Strategy is viable but needs structural adjustment before continuing |
+| Abort | Cost exceeds value, risk unacceptable, or goal unreachable |
 
 ---
 
-## 8. 长时间执行会影响整体目标
+## The Three-Layer Model
 
-例如：
+### Layer 1: Decision Policy (Governance Layer)
 
-继续完成当前任务，将导致：
+Decision Policy is the governing layer. It wraps around the entire system
+and can override, mandate, or redirect routing regardless of health signals.
 
-* 无法进行后续分析
-* 会话时间过长
-* 用户等待成本过高
+Override Rules:
 
-应考虑阶段性交付。
+| Rule | Effect |
+|---|---|
+| User said "do everything, don't ask" | Suppress health signals unless risk is critical |
+| Destructive operation ahead | Force gate even with zero health signals |
+| Operation is irreversible | Require explicit confirmation |
+| User unavailable (async/batch) | Route to safest path, never Abort silently |
+| Hard deadline specified | Escalate if deadline will be breached |
+
+Key insight: Policy can produce gate routing even when the Trigger Engine
+sees zero health signals. A DROP TABLE command has Threshold 0 and Confidence
+100% — the Engine would see no trigger. Policy overrides this to Escalate.
+
+Priority: Decision Policy > Health Assessment > Trigger Engine. Always.
+
+### Layer 2: Three Health Dimensions
+
+Health signals are organized by category — not a flat list.
+
+#### Execution Health
+
+The agent's operational efficiency.
+
+| Signal | Threshold | Confidence Factor |
+|---|---|---|
+| Failure rate rising | > 50% (last 10 ops) | HIGH if same error type; LOW if varied |
+| Time per unit increasing | > 3x initial speed | HIGH if structural; LOW if one slow item |
+| Cost exceeding estimate | > 3x original estimate | HIGH if data-driven; LOW if guesswork |
+| Speed degrading | > 2x slowdown sustained | HIGH if monotonic trend; LOW if spike |
+
+#### Requirement Health
+
+The stability of what is being asked.
+
+| Signal | Threshold | Confidence Factor |
+|---|---|---|
+| Scope expanding mid-execution | >= 2 new task categories | HIGH if user-initiated; MED if agent-discovered |
+| Unknown unknowns growing | Unknown steps > known steps | HIGH if new domain; MED if same domain deeper |
+| Manual judgment replacing automation | >= 3 judgment calls without user input | HIGH if domain gap; MED if formatting choice |
+
+#### Decision Health
+
+The quality of the next-step options.
+
+| Signal | Threshold | Confidence Factor |
+|---|---|---|
+| Multiple viable paths exist | >= 2 approaches, each > 10 min | HIGH if tradeoffs clear; MED if one path dominates |
+| Path is irreversible | Destructive or schema-changing operation | HIGH always (mandatory gate) |
+| User preference required | Time vs. quality vs. completeness tradeoff | HIGH if preferences unknown; LOW if implied by task |
+
+### Layer 3: Trigger Decision = f(Threshold, Confidence, Policy)
+
+The Trigger Engine assesses health signals. The full decision function is:
+
+```
+TRIGGER_DECISION = f(Threshold, Confidence, Policy)
+```
+
+A health signal contributes to routing only when:
+
+```
+(THRESHOLD reached) AND (CONFIDENCE >= MEDIUM)
+```
+
+But Policy can override at any point.
+
+Why the three-input model matters:
+
+| Scenario | Threshold | Confidence | Policy | Result |
+|---|---|---|---|---|
+| 3 API 404s, known outage | MET | HIGH | Neutral | Re-plan |
+| 3 random 404s | MET | LOW | Neutral | Suppress |
+| DROP TABLE command | 0 | 100% | Mandatory gate | Escalate |
+| User said "always retry" | MET | HIGH | Override | Retry |
+
+The Trigger Engine proposes. Decision Policy disposes.
+
+Confidence assessment criteria:
+
+| Confidence | Criteria |
+|---|---|
+| HIGH | Pattern is systematic, root cause identifiable, trend monotonic |
+| MEDIUM | Pattern emerging but noisy, root cause plausible but unconfirmed |
+| LOW | Pattern could be noise, root cause speculative, alternatives exist |
 
 ---
 
-# Re-plan 后应做什么
+## Decision Flow
 
-不要直接停止。
+```mermaid
+graph TD
+    A[Execute Phase] --> B{Checkpoint?}
+    B -->|No| A
+    B -->|Yes| C[Assess: Exec / Req / Decision Health]
 
-应：
+    C --> D{Policy Override Active?}
+    D -->|Yes: Mandatory Gate| E[Route per Policy]
+    D -->|Yes: User Waiver| A
+    D -->|No| F{Signal: Threshold AND Confidence?}
 
-1. 总结目前进展
-2. 说明遇到的问题
-3. 分析造成影响的原因
-4. 给出可选推进方案
-5. 说明各方案的时间、风险、完成度
-6. 请用户确认优先级
+    F -->|No| A
+    F -->|Yes| G[Enter Decision Gate]
 
-例如：
+    G --> H[Present structured output]
+    H --> I[Wait for user / auto-route]
 
-> 当前已完成 12/39 所学校。
-> 后续学校官网结构差异较大，预计整体耗时将明显增加。
-> 可以选择：
-> A. 继续全部完成（预计较长时间）
-> B. 优先完成重点学校
-> C. 先交付已完成结果，再继续补充
-
----
-
-# 不要因为以下情况触发 Re-plan
-
-以下属于正常执行过程，不应频繁打断用户：
-
-* 单次超时
-* 单个网站异常
-* 一两个对象需要人工确认
-* 小范围返工
-* 正常的数据清洗
-* 可预期的重复工作
-
-只有当这些问题开始持续出现，并明显改变任务成本时，才进入 Re-plan。
+    I --> J{Route}
+    J -->|Exec: Continue/Retry/Fallback/Parallelize| A
+    J -->|Coord: Ask User/Checkpoint/Escalate| K[Human-Agent handoff]
+    J -->|Term: Re-plan| L[Adjust approach]
+    L --> A
+    J -->|Term: Abort| M[End]
+```
 
 ---
 
-# 核心理念
+## Structured Output Format
 
-工程执行不是一味坚持到底，而是在执行过程中持续校正计划。
+When the Decision Gate fires, produce:
 
-当"未知量开始超过已知量"、"成本开始明显偏离预估"或"存在多个合理推进方案"时，应停止机械执行，主动进行 Re-plan，并让用户参与优先级决策，而不是替用户做决定。
+### 1. Progress Summary
+- Original goal
+- Completed (quantified)
+- Failed (categorized by error type)
 
+### 2. Health Assessment
+- Which health dimension(s) flagged, with threshold and confidence
+- Root cause: systematic or incidental?
+
+### 3. Gate Routing
+- Category: Execution Action / Coordination / Termination
+- Recommended gate output with rationale
+- 2-4 concrete paths, each with: What / Effort / Completeness / Risk
+- Policy applied (if any)
+
+### 4. Decision
+- State recommendation, defer to user
+
+---
+
+## What Does NOT Fire the Gate
+
+- A single timeout, 404, or transient error
+- One malformed data item
+- The first retry
+- Tasks explicitly marked "complete everything, don't ask"
+- Expected repetitive work
+- Normal data cleaning
+
+---
+
+## Anti-Patterns
+
+DO NOT:
+- Gate after every minor hiccup
+- Gate without quantified evidence
+- Present "continue" as the only option
+- Treat "user said do everything" as permanent waiver
+- Confuse "task is hard" with "task needs gating"
+
+---
+
+## Examples
+
+### Example 1: Coordination — Ask User
+
+Task: Scrape contact info from 50 university websites.
+
+Progress: 12/50 done (2 min each). Remaining 38 use React SPAs (10-15 min each).
+
+Health: Execution Health — time per unit > 3x, confidence HIGH.
+Policy: No override active.
+
+Gate route -> Coordination: Ask User:
+A. Continue all 50 — 6-10h, 100%
+B. Prioritize top 20 — ~2h, 80%
+C. Deliver 12 now — 0h, 24%
+
+### Example 2: Coordination — Ask User (Multiple Paths)
+
+Task: Fix the CI pipeline.
+
+Progress: Fixed lint. Tests reveal 14 failures (snapshot drift, dependency mismatch, env config).
+
+Health: Decision Health — multiple paths, confidence HIGH.
+
+Gate route -> Coordination: Ask User:
+A. Fix all — 1-3h, high uncertainty
+B. Fix snapshot + config — 1h
+C. Roll back to green — 30 min
+
+### Example 3: Policy Override — Escalate
+
+Task: Clean up the database.
+
+Progress: Agent identifies a DROP TABLE command.
+
+Health: Zero health signals. Threshold 0, Confidence 100%.
+
+Policy: Mandatory gate for destructive operations.
+
+Gate route -> Coordination: Escalate. Require explicit user confirmation.
+
+---
+
+## Edge Cases
+
+### User says "just keep going"
+Record waiver. Continue. Re-evaluate at next checkpoint — do not silence gates permanently.
+
+### Task is time-critical
+Add time remaining to every option. Flag paths that exceed the deadline.
+
+### All options are bad
+Say so. Abort is a valid gate output.
+
+### User is unavailable
+Route to safest path: prefer Execution Actions over Coordination.
+Never Abort silently. Never choose irreversible without consent.
+
+### Multiple health dimensions flag simultaneously
+Report all. Present consolidated options. Do not repeat per dimension.
+
+### Policy says one thing, health says another
+Policy always wins. If policy mandates Escalate and health says Continue,
+the route is Escalate. Explain why.

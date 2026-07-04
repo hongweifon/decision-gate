@@ -1,17 +1,11 @@
 ---
 name: Bug Report
-about: Skill misbehaved
 labels: bug
 ---
-
-## Scenario
 Task type:
 Description:
 Expected:
 Actual:
-
-## Context
+Trigger fired/should have fired:
 Items done/total:
-Time elapsed:
-Success rate:
 Errors:

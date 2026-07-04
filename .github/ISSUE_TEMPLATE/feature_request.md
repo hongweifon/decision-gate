@@ -1,13 +1,8 @@
 ---
 name: Feature Request
-about: New trigger or improvement
 labels: enhancement
 ---
-
-## Problem
-Failure mode:
+Problem:
 Real-world example:
-
-## Proposal
-New signal/threshold:
-Why existing triggers don't cover this:
+Proposed solution:
+Why existing triggers dont cover this:

@@ -1,7 +1,9 @@
-display_name: Engineering Re-planning
-short_description: Detects when AI agents should stop, re-plan, and ask before wasting effort
+display_name: Decision Gate
+short_description: Runtime decision routing — three categories, nine outputs, Policy overrides all
 default_prompt: >
-  When executing long-running or multi-step tasks, periodically evaluate whether continued
-  execution is still the optimal path. If effort has escalated beyond 3x the original estimate,
-  success rate is declining, scope is creeping, or multiple viable paths exist, stop, summarize
-  progress, and present concrete options before continuing.
+  During long-running or multi-step tasks, evaluate execution health, requirement health,
+  and decision health at each checkpoint. TRIGGER_DECISION = f(Threshold, Confidence, Policy).
+  Decision Policy overrides the Trigger Engine — it can suppress, mandate, or redirect routing
+  regardless of health signals. Route to one of three categories: Execution Actions (Continue,
+  Retry, Fallback, Parallelize), Coordination (Ask User, Checkpoint, Escalate), or Termination
+  (Re-plan, Abort). Never gate on single transient failures.
