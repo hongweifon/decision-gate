@@ -1,3 +1,5 @@
+> 🇺🇸 English · 🇨🇳 [简体中文](docs/zh/README.md)
+
 # Decision Gate
 A Runtime Decision Framework for AI Agents.
 Teach agents not only how to execute — but when to pause, reroute, and ask.
